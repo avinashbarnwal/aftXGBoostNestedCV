@@ -8,7 +8,7 @@ import json
 import argparse
 from multiprocessing import cpu_count
 
-from optuna.samplers import RandomSampler
+from optuna.samplers import RandomSampler, GridSampler, TPESampler
 
 def data_import(data_name):
     filename = 'https://raw.githubusercontent.com/avinashbarnwal/GSOC-2019/master/AFT/test/data/'+data_name+'/'
@@ -177,11 +177,34 @@ class HPO:
                 'eval_metric': 'interval-regression-accuracy'}
 
 
+class Grid:
+    def get_params(self, trial):
+        eta              = trial.suggest_loguniform('learning_rate', 0.001, 1.001)
+        max_depth        = trial.suggest_int('max_depth', 2, 10)
+        min_child_weight = trial.suggest_loguniform('min_child_weight', 0.1, 100.1)
+        reg_alpha        = trial.suggest_loguniform('reg_alpha', 0.0001, 101)
+        reg_lambda       = trial.suggest_loguniform('reg_lambda', 0.0001, 101)
+        sigma            = trial.suggest_loguniform('aft_loss_distribution_scale', 1.0, 100.01)
+        return {'eta': eta,
+                'max_depth': int(max_depth),
+                'min_child_weight': min_child_weight,
+                'reg_alpha': reg_alpha,
+                'reg_lambda': reg_lambda,
+                'aft_loss_distribution_scale': sigma}
+
+    def get_base_params(self):
+        return {'verbosity': 0,
+                'objective': 'survival:aft',
+                'tree_method': 'hist',
+                'nthread': 1,
+                'eval_metric': 'interval-regression-accuracy'}
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', required=True)
     parser.add_argument('--seed', required=False, type=int, default=1)
-    parser.add_argument('--run', required=True, choices=['grid1', 'grid2', 'hpo'])
+    parser.add_argument('--run', required=True, choices=['grid', 'hpo', 'hpo-tpe'])
 
     args = parser.parse_args()
     print(f'Dataset = {args.dataset}')
@@ -201,10 +224,24 @@ def main():
                       sampler=RandomSampler(seed=args.seed),
                       model_file_fmt='{dataset_name}/{distribution}-fold{test_fold_id}-model.json',
                       trial_log_fmt='{dataset_name}/{distribution}-fold{test_fold_id}.json')
-    elif args.run == 'grid1':
-        raise NotImplementedError('One-hyperparameter grid search not implemented yet')
-    elif args.run == 'grid2':
-        raise NotImplementedError('Two-hyperparameter grid search not implemented yet')
+    elif args.run == 'hpo-tpe':
+        run_nested_cv(inputs, labels, folds, seed=args.seed, dataset_name=args.dataset,
+                      search_obj=HPO(), n_trials=100, distributions=['normal', 'logistic', 'extreme'],
+                      sampler=TPESampler(seed=args.seed),
+                      model_file_fmt='{dataset_name}/tpe-{distribution}-fold{test_fold_id}-model.json',
+                      trial_log_fmt='{dataset_name}/tpe-{distribution}-fold{test_fold_id}.json')
+    elif args.run == 'grid':
+        grid = {'learning_rate': [0.001, 0.01, 0.1, 1.0],
+                'max_depth': [2, 3, 4, 5, 6, 7, 8, 9, 10],
+                'min_child_weight': [0.1, 1.0, 10.0, 100.0],
+                'reg_alpha': [0.0001, 0.001, 0.01, 0.1, 1.0, 10.0, 100.0],
+                'reg_lambda': [0.0001, 0.001, 0.01, 0.1, 1.0, 10.0, 100.0],
+                'aft_loss_distribution_scale': [1.0, 10.0, 100.0]}
+        run_nested_cv(inputs, labels, folds, seed=args.seed, dataset_name=args.dataset,
+                      search_obj=Grid(), n_trials=100, distributions=['normal'],
+                      sampler=GridSampler(search_space=grid),
+                      model_file_fmt='{dataset_name}/grid-{distribution}-fold{test_fold_id}-model.json',
+                      trial_log_fmt='{dataset_name}/grid-{distribution}-fold{test_fold_id}.json')
     else:
         raise ValueError(f'Unknown run: {args.run}')
 

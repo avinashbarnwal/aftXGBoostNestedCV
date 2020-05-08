@@ -11,5 +11,5 @@ for dataset in ATAC_JV_adipose CTCF_TDH_ENCODE H3K27ac-H3K4me3_TDHAM_BP H3K27ac_
                H3K36me3_TDH_immune H3K36me3_TDH_other
 do
     mkdir -p ${dataset}
-    PYTHONPATH=../xgboost/python-package/ python nested_cv.py --dataset ${dataset} --run hpo &> ${dataset}/log.txt
+    PYTHONPATH=../xgboost/python-package/ python nested_cv.py --dataset ${dataset} --run hpo-tpe &> ${dataset}/log_tpe.txt
 done
